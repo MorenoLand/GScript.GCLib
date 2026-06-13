@@ -10,8 +10,11 @@ DEFAULT_SETTINGS = Path(os.environ.get("GCLIB_HEADLESS_SETTINGS", "settings.ini"
 
 
 def read_headless_settings(path):
+    path = Path(path)
+    if not path.exists():
+        raise SystemExit(f"Settings file not found: {path}. Copy examples/python/settings.sample.ini to settings.ini or pass --settings.")
     values = {}
-    lines = Path(path).read_text(errors="replace").splitlines()
+    lines = path.read_text(errors="replace").splitlines()
     i = 0
     while i < len(lines):
         line = lines[i].strip()

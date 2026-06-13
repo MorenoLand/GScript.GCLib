@@ -2,6 +2,8 @@ build/
 bin/
 backups/
 __pycache__/
+settings.ini
+*.local.ini
 *.py[cod]
 *.dll
 *.lib

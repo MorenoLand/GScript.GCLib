@@ -36,6 +36,15 @@ python examples/python/test_v6.py --host 127.0.0.1 --port 14720 --account accoun
 
 The examples use `ctypes` only for loading the C ABI. Packet framing, login payloads, compression, decoding, typed dispatch, and resource dumping stay inside the library.
 
+For the settings-file based Gen6 smoke helper, copy the sample config and keep the real file untracked:
+
+```sh
+cp examples/python/settings.sample.ini settings.ini
+python examples/python/connect_from_headless_config.py --settings settings.ini --account account --password password
+```
+
+The sample config contains only placeholders. Real endpoint details, identity seeds, and private key material should live in an ignored `settings.ini`, a `*.local.ini`, environment variables, or your wrapper's own config system.
+
 ## Minimal Flow
 
 ```c

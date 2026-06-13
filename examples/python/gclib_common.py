@@ -4,9 +4,13 @@ import json
 import math
 import pathlib
 import platform
+import sys
 import threading
 import time
 
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(errors="replace")
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LIB_NAME = {

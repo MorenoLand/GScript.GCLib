@@ -1016,6 +1016,24 @@ static std::string level_name_for_nw_dump(const std::string& level) {
     return level + ".nw";
 }
 
+static std::string lowercase_extension(const std::string& name) {
+    size_t slash = name.find_last_of("/\\");
+    size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return "";
+    std::string ext = name.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+static bool is_gmap_level_name(const std::string& level) {
+    return lowercase_extension(level) == "gmap";
+}
+
+static bool active_level_capture_has_concrete_level(TClient* client) {
+    std::lock_guard<std::mutex> lock(client->players_mutex);
+    return client->level_state.active && lowercase_extension(client->level_state.name) == "nw";
+}
+
 static std::vector<uint8_t> tiles_to_nw_bytes(const std::vector<unsigned short>& tiles, int layer) {
     static const char* base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::ostringstream out;
@@ -1501,8 +1519,12 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
     }
     case PLO_LEVELNAME: {
         std::string level = to_string_lossy(payload);
-        flush_level_capture(client, resource_cb, resource_dump_directory, resource_dump_types, packet_id);
-        begin_level_capture(client, level);
+        if (is_gmap_level_name(level) && active_level_capture_has_concrete_level(client)) {
+            set_current_level(client, level);
+        } else {
+            flush_level_capture(client, resource_cb, resource_dump_directory, resource_dump_types, packet_id);
+            begin_level_capture(client, level);
+        }
         if (level_cb.cb) level_cb.cb(level.c_str(), level_cb.ud);
         break;
     }

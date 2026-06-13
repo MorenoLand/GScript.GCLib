@@ -1032,24 +1032,6 @@ static std::vector<uint8_t> tiles_to_nw_bytes(const std::vector<unsigned short>&
     return std::vector<uint8_t>(text.begin(), text.end());
 }
 
-static std::string bytes_to_base64(const std::vector<uint8_t>& bytes) {
-    static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve(((bytes.size() + 2) / 3) * 4);
-    for (size_t i = 0; i < bytes.size(); i += 3) {
-        uint32_t value = static_cast<uint32_t>(bytes[i]) << 16;
-        bool has_b = i + 1 < bytes.size();
-        bool has_c = i + 2 < bytes.size();
-        if (has_b) value |= static_cast<uint32_t>(bytes[i + 1]) << 8;
-        if (has_c) value |= static_cast<uint32_t>(bytes[i + 2]);
-        out.push_back(chars[(value >> 18) & 0x3f]);
-        out.push_back(chars[(value >> 12) & 0x3f]);
-        out.push_back(has_b ? chars[(value >> 6) & 0x3f] : '=');
-        out.push_back(has_c ? chars[value & 0x3f] : '=');
-    }
-    return out;
-}
-
 static void append_nw_board(std::ostringstream& out, const std::vector<unsigned short>& tiles, int layer) {
     static const char* base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     for (int y = 0; y < 64; ++y) {
@@ -1067,6 +1049,15 @@ static std::string format_decimal(double value) {
     std::ostringstream out;
     out << value;
     return out.str();
+}
+
+static void append_npc_bytecode_hex_comments(std::ostringstream& out, int npc_id, const std::vector<uint8_t>& bytecode) {
+    out << "// GCLIB_BYTECODE_HEX_BEGIN npc_id=" << npc_id << " length=" << bytecode.size() << "\n";
+    for (size_t offset = 0; offset < bytecode.size(); offset += 16) {
+        size_t count = std::min<size_t>(16, bytecode.size() - offset);
+        out << " " << bytes_hex(bytecode.data() + offset, count) << "\n";
+    }
+    out << "// GCLIB_BYTECODE_HEX_END\n";
 }
 
 static std::vector<uint8_t> level_state_to_nw_bytes(const TClientLevelState& level) {
@@ -1090,7 +1081,7 @@ static std::vector<uint8_t> level_state_to_nw_bytes(const TClientLevelState& lev
         if (image == "-" || image == "#c#") continue;
         out << "NPC " << image << " " << format_decimal(npc.x) << " " << format_decimal(npc.y) << "\n";
         if (!npc.bytecode.empty()) {
-            out << "//#GCLIB_BYTECODE_BASE64 " << bytes_to_base64(npc.bytecode) << "\n";
+            append_npc_bytecode_hex_comments(out, npc.id, npc.bytecode);
         }
         out << "NPCEND\n";
     }

@@ -1,0 +1,15 @@
+build/
+bin/
+backups/
+__pycache__/
+*.py[cod]
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.ilk
+*.log
+*.user
+*.suo
+.vs/

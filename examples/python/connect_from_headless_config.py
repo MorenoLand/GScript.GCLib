@@ -81,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--show-cache", action="store_true")
     parser.add_argument("--dump-resources", default="")
     parser.add_argument("--dump-resource-types", default="")
+    parser.add_argument("--fetch-server-scripts", action="store_true")
     parser.add_argument("--request-file", action="append", default=[])
     parser.add_argument("--request-level-board", nargs="?", const="", default=None)
     parser.add_argument("--seconds", default=20, type=int)
@@ -121,6 +122,7 @@ if __name__ == "__main__":
     run.show_cache = args.show_cache
     run.dump_resources = args.dump_resources
     run.dump_resource_types = args.dump_resource_types
+    run.fetch_server_scripts = args.fetch_server_scripts
     run.request_file = args.request_file
     run.request_level_board = args.request_level_board
     run.seconds = args.seconds

@@ -221,6 +221,7 @@ def run_basic_client(args, version):
             raise RuntimeError("gc_set_resource_dump_types failed")
     startup_sent = False
     move_sent = False
+    requested_server_scripts = set()
     walk_sent = False
     level_board_requested = False
     self_player_id = None
@@ -411,6 +412,22 @@ def run_basic_client(args, version):
     @gc.keep(gc.CB_PACKET_EVENT)
     def on_packet_event(packet_id, packet_name, event_json, _ud):
         print(f"packet-event[{packet_id} {text(packet_name)}]: {text(event_json)}")
+        if packet_id != 197 or not getattr(args, "fetch_server_scripts", False):
+            return
+        try:
+            metadata = json.loads(text(event_json))
+            script_type = metadata.get("type", "")
+            name = metadata.get("name", "")
+            key = (script_type, name)
+            if not name or key in requested_server_scripts:
+                return
+            requested_server_scripts.add(key)
+            if script_type == "weapon":
+                gc.lib.gc_request_weapon_script(handle, b(name))
+            elif script_type == "class":
+                gc.lib.gc_request_class_script(handle, b(name), 0)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return
 
     @gc.keep(gc.CB_CHAT)
     def on_chat(player_id, message, _ud):

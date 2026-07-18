@@ -393,6 +393,15 @@ static std::filesystem::path safe_resource_relative_path(const std::string& name
     return out.empty() ? std::filesystem::path("unnamed") : out;
 }
 
+static std::string weapon_bytecode_filename(const std::string& name) {
+    std::string out = "weapon";
+    for (unsigned char c : name) {
+        if (std::isalnum(c)) out.push_back(static_cast<char>(c));
+        else out += "%0" + std::to_string(static_cast<unsigned int>(c));
+    }
+    return out + ".gs2bc";
+}
+
 static std::string path_string_utf8(const std::filesystem::path& path) {
 #ifdef _WIN32
     return path.u8string();
@@ -402,6 +411,7 @@ static std::string path_string_utf8(const std::filesystem::path& path) {
 }
 
 static std::filesystem::path resource_dump_path(const std::string& root, const std::string& resource_type, const std::string& name) {
+    if (resource_type == "weapon-bytecode") return std::filesystem::path(root) / percent_encode_path_segment(resource_type) / weapon_bytecode_filename(name);
     return std::filesystem::path(root) / percent_encode_path_segment(resource_type) / safe_resource_relative_path(name);
 }
 
@@ -1748,7 +1758,8 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
             script_name = header;
         } else {
             script_type = header.substr(0, comma);
-            script_name = header.substr(comma + 1);
+            size_t name_end = header.find(',', comma + 1);
+            script_name = header.substr(comma + 1, name_end == std::string::npos ? std::string::npos : name_end - comma - 1);
         }
         std::vector<uint8_t> bytecode = r.remaining();
         std::string resource_type = script_type.empty() ? "weapon-bytecode" : script_type + "-bytecode";
@@ -1848,7 +1859,6 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
         int id = r.gint3();
         std::vector<uint8_t> bytecode = r.remaining();
         record_level_npc_bytecode(client, id, bytecode);
-        emit_resource(resource_cb, resource_dump_directory, resource_dump_types, packet_id, "npc-bytecode", std::to_string(id), bytecode);
         std::ostringstream json;
         json << "{\"npc_id\":" << id << ",\"bytecode_length\":" << bytecode.size()
              << ",\"bytecode_hex\":\"" << bytes_hex(bytecode.data(), bytecode.size()) << "\"}";

@@ -7,6 +7,7 @@
 #include "IEnums.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -349,12 +350,16 @@ GCLIB_API int gc_connect(GCHandle handle) {
     gc->connected = true;
     gc->authenticated = false;
     gc->first_packet = true;
+    gc->first_packet_out = true;
     gc->in_iter = 0x04A80B38;
     gc->out_iter = 0x04A80B38;
     gc->packet_index = 0;
     gc->v6_incoming_crypto_enabled = false;
+    gc->v6_outgoing_crypto_enabled = false;
     gc->v6_rc4_i = 0;
     gc->v6_rc4_j = 0;
+    gc->v6_rc4_out_i = 0;
+    gc->v6_rc4_out_j = 0;
     set_error(gc, "");
     if (!send_handshake_if_needed(gc)) {
         close_socket(gc->sock);
@@ -731,6 +736,211 @@ GCLIB_API int gc_request_gani_script(GCHandle handle, const char* name, int mod_
     std::string s = name ? name : "";
     data.insert(data.end(), s.begin(), s.end());
     return gc_send_packet(handle, PLI_UPDATEGANI, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_trigger_action_npc(GCHandle handle, int npc_id, float x, float y, const char* action, const char* params) {
+    std::vector<uint8_t> data;
+    if (npc_id <= 0) {
+        data.push_back(' ');
+        data.push_back(' ');
+        data.push_back(' ');
+    } else {
+        write_gint3(data, npc_id);
+    }
+    int enc_x = std::max(0, std::min(220, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(220, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    if (action) data.insert(data.end(), action, action + std::strlen(action));
+    if (params && *params) {
+        data.push_back(',');
+        data.insert(data.end(), params, params + std::strlen(params));
+    }
+    return gc_send_packet(handle, PLI_TRIGGERACTION, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_trigger_action(GCHandle handle, float x, float y, const char* action, const char* params) {
+    return gc_send_trigger_action_npc(handle, 0, x, y, action, params);
+}
+
+GCLIB_API int gc_send_hit_objects(GCHandle handle, float x, float y, int power, int npc_id) {
+    std::vector<uint8_t> data;
+    int enc_power = std::max(0, std::min(127, power));
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_power + 32));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    if (npc_id > 0) write_gint3(data, npc_id);
+    return gc_send_packet(handle, PLI_HITOBJECTS, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_player_hurt(GCHandle handle, int target_player_id, float from_x, float from_y, float target_x, float target_y, int power) {
+    std::vector<uint8_t> data;
+    write_gint3(data, target_player_id);
+    double dx = (target_x + 1.5 - from_x) * 0.5;
+    double dy = (target_y + 2.0 - from_y) * 0.5;
+    double len = std::hypot(dx, dy);
+    if (len > 0.0) { dx /= len; dy /= len; }
+    auto hurt_coord = [](double v) -> uint8_t {
+        if (v < -4.0) return 0x20;
+        if (v > 4.0) return 0xa0;
+        int enc = static_cast<int>(std::floor((v + 4.0) * 16.0 + 0.0001));
+        return static_cast<uint8_t>(std::max(0, std::min(128, enc)) + 0x20);
+    };
+    data.push_back(hurt_coord(dx));
+    data.push_back(hurt_coord(dy));
+    data.push_back(static_cast<uint8_t>(std::max(0, std::min(127, power)) + 32));
+    return gc_send_packet(handle, PLI_HURTPLAYER, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_add_bomb(GCHandle handle, float x, float y, int power, int fuse_ticks, const char* image) {
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    data.push_back(static_cast<uint8_t>(((power & 7) | 8) + 32));
+    data.push_back(static_cast<uint8_t>(std::max(0, std::min(127, fuse_ticks)) + 32));
+    if (image && *image) {
+        std::string img = image;
+        if (img.size() > 223) img.resize(223);
+        data.insert(data.end(), img.begin(), img.end());
+    }
+    return gc_send_packet(handle, PLI_BOMBADD, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_del_bomb(GCHandle handle, float x, float y) {
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    return gc_send_packet(handle, PLI_BOMBDEL, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_item_add(GCHandle handle, float x, float y, int item_id) {
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    data.push_back(static_cast<uint8_t>((item_id & 0x7f) + 32));
+    return gc_send_packet(handle, PLI_ITEMADD, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_item_take(GCHandle handle, float x, float y, int item_id) {
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    data.push_back(static_cast<uint8_t>((item_id & 0x7f) + 32));
+    return gc_send_packet(handle, PLI_ITEMTAKE, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_item_del(GCHandle handle, float x, float y) {
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    return gc_send_packet(handle, PLI_ITEMDEL, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_open_chest(GCHandle handle, int x, int y) {
+    std::vector<uint8_t> data;
+    data.push_back(static_cast<uint8_t>((x & 0x7f) + 32));
+    data.push_back(static_cast<uint8_t>((y & 0x7f) + 32));
+    return gc_send_packet(handle, PLI_OPENCHEST, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_shot(GCHandle handle, float x, float y, int direction, int sprite, int power, int mirrored, int from_player) {
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    int flags = direction & 3;
+    if (mirrored) flags |= 4;
+    if (from_player) flags |= 8;
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    data.push_back(static_cast<uint8_t>((flags & 0x7f) + 32));
+    data.push_back(static_cast<uint8_t>((sprite & 0x7f) + 32));
+    data.push_back(static_cast<uint8_t>((power & 0x7f) + 33));
+    return gc_send_packet(handle, PLI_SHOOT, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_verify_file_crc(GCHandle handle, const char* filename, unsigned int crc32) {
+    std::vector<uint8_t> data;
+    write_gint5(data, static_cast<int>(crc32));
+    std::string s = filename ? filename : "";
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    data.insert(data.end(), s.begin(), s.end());
+    return gc_send_packet(handle, PLI_VERIFYWANTSEND, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_level_warp_modtime(GCHandle handle, float x, float y, const char* level, unsigned int mod_time) {
+    std::vector<uint8_t> data;
+    write_gint5(data, static_cast<int>(mod_time));
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 32));
+    data.push_back(static_cast<uint8_t>(enc_y + 32));
+    std::string s = level ? level : "";
+    data.insert(data.end(), s.begin(), s.end());
+    return gc_send_packet(handle, PLI_LEVELWARPMOD, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_adjacent_level(GCHandle handle, const char* level) {
+    std::string s = level ? level : "";
+    return gc_send_packet(handle, PLI_ADJACENTLEVEL, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_delete_npc(GCHandle handle, int npc_id) {
+    std::vector<uint8_t> data;
+    write_gint3(data, npc_id);
+    return gc_send_packet(handle, PLI_NPCDEL, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_put_npc(GCHandle handle, float x, float y, const char* image, const char* script) {
+    std::vector<uint8_t> data;
+    write_gchar(data, std::max(0, std::min(220, static_cast<int>(std::floor(x * 2.0f + 0.5f)))));
+    write_gchar(data, std::max(0, std::min(220, static_cast<int>(std::floor(y * 2.0f + 0.5f)))));
+    std::string img = image ? image : "";
+    data.insert(data.end(), img.begin(), img.end());
+    data.push_back('\n');
+    std::string sc = script ? script : "";
+    data.insert(data.end(), sc.begin(), sc.end());
+    return gc_send_packet(handle, PLI_PUTNPC, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_rc_chat(GCHandle handle, const char* message) {
+    std::string s = message ? message : "";
+    return gc_send_packet(handle, PLI_RC_CHAT, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_set_encryption_out(GCHandle handle, const char* cipher_type, const char* key, const char* iv) {
+    auto* gc = as_client(handle);
+    if (!gc) return 0;
+    (void)iv;
+    std::string type = cipher_type ? cipher_type : "";
+    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::lock_guard<std::mutex> lock(gc->send_mutex);
+    if (type == "rc4" && key && *key) {
+        std::vector<uint8_t> key_bytes(key, key + std::strlen(key));
+        for (int i = 0; i < 256; ++i) gc->v6_rc4_out_s[i] = static_cast<uint8_t>(i);
+        gc->v6_rc4_out_i = 0;
+        gc->v6_rc4_out_j = 0;
+        uint8_t j = 0;
+        for (int i = 0; i < 256; ++i) {
+            j = static_cast<uint8_t>(j + gc->v6_rc4_out_s[i] + key_bytes[static_cast<size_t>(i) % key_bytes.size()]);
+            std::swap(gc->v6_rc4_out_s[i], gc->v6_rc4_out_s[j]);
+        }
+        gc->v6_outgoing_crypto_enabled = true;
+        return 1;
+    }
+    gc->v6_outgoing_crypto_enabled = false;
+    return 1;
 }
 
 GCLIB_API void gc_free_string(char* value) {

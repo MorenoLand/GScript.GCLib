@@ -87,12 +87,17 @@ struct TClient {
     uint8_t v6_rc4_s[256]{};
     uint8_t v6_rc4_i = 0;
     uint8_t v6_rc4_j = 0;
+    bool v6_outgoing_crypto_enabled = false;
+    uint8_t v6_rc4_out_s[256]{};
+    uint8_t v6_rc4_out_i = 0;
+    uint8_t v6_rc4_out_j = 0;
     uint32_t in_iter = 0x04A80B38;
     uint32_t out_iter = 0x04A80B38;
     std::atomic<bool> connected{false};
     std::atomic<bool> authenticated{false};
     std::atomic<bool> stop{false};
     std::atomic<bool> first_packet{true};
+    std::atomic<bool> first_packet_out{true};
     socket_t sock = invalid_socket_value;
     std::thread recv_thread;
     std::mutex send_mutex;

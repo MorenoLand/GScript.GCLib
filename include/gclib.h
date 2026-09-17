@@ -128,6 +128,24 @@ GCLIB_API int gc_send_text(GCHandle handle, const char* type, const char* key, c
 GCLIB_API int gc_request_weapon_script(GCHandle handle, const char* name);
 GCLIB_API int gc_request_class_script(GCHandle handle, const char* name, int mod_time);
 GCLIB_API int gc_request_gani_script(GCHandle handle, const char* name, int mod_time);
+GCLIB_API int gc_send_trigger_action(GCHandle handle, float x, float y, const char* action, const char* params);
+GCLIB_API int gc_send_trigger_action_npc(GCHandle handle, int npc_id, float x, float y, const char* action, const char* params);
+GCLIB_API int gc_send_hit_objects(GCHandle handle, float x, float y, int power, int npc_id);
+GCLIB_API int gc_send_player_hurt(GCHandle handle, int target_player_id, float from_x, float from_y, float target_x, float target_y, int power);
+GCLIB_API int gc_send_add_bomb(GCHandle handle, float x, float y, int power, int fuse_ticks, const char* image);
+GCLIB_API int gc_send_del_bomb(GCHandle handle, float x, float y);
+GCLIB_API int gc_send_item_add(GCHandle handle, float x, float y, int item_id);
+GCLIB_API int gc_send_item_take(GCHandle handle, float x, float y, int item_id);
+GCLIB_API int gc_send_item_del(GCHandle handle, float x, float y);
+GCLIB_API int gc_send_open_chest(GCHandle handle, int x, int y);
+GCLIB_API int gc_send_shot(GCHandle handle, float x, float y, int direction, int sprite, int power, int mirrored, int from_player);
+GCLIB_API int gc_send_verify_file_crc(GCHandle handle, const char* filename, unsigned int crc32);
+GCLIB_API int gc_send_level_warp_modtime(GCHandle handle, float x, float y, const char* level, unsigned int mod_time);
+GCLIB_API int gc_send_adjacent_level(GCHandle handle, const char* level);
+GCLIB_API int gc_send_delete_npc(GCHandle handle, int npc_id);
+GCLIB_API int gc_send_put_npc(GCHandle handle, float x, float y, const char* image, const char* script);
+GCLIB_API int gc_send_rc_chat(GCHandle handle, const char* message);
+GCLIB_API int gc_set_encryption_out(GCHandle handle, const char* cipher_type, const char* key, const char* iv);
 
 GCLIB_API void gc_free_string(char* value);
 

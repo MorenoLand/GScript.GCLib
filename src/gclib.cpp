@@ -933,6 +933,152 @@ GCLIB_API int gc_send_rc_chat(GCHandle handle, const char* message) {
     return gc_send_packet(handle, PLI_RC_CHAT, s.data(), static_cast<int>(s.size()));
 }
 
+GCLIB_API int gc_send_server_warp(GCHandle handle, const char* destination) {
+    std::string s = destination ? destination : "";
+    return gc_send_packet(handle, PLI_SERVERWARP, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_board_modify(GCHandle handle, int layer, int x, int y, int width, int height, const unsigned short* tiles) {
+    if (!tiles || width <= 0 || height <= 0) return 0;
+    std::vector<uint8_t> data;
+    if (layer > 0) data.push_back(static_cast<uint8_t>(layer + 0x60));
+    data.push_back(static_cast<uint8_t>((x & 0xff) + 0x20));
+    data.push_back(static_cast<uint8_t>((y & 0xff) + 0x20));
+    data.push_back(static_cast<uint8_t>((width & 0xff) + 0x20));
+    data.push_back(static_cast<uint8_t>((height & 0xff) + 0x20));
+    for (int row = 0; row < height; ++row)
+        for (int col = 0; col < width; ++col) {
+            unsigned short t = tiles[static_cast<size_t>(row * width + col)];
+            data.push_back(static_cast<uint8_t>((t >> 7) + 0x20));
+            data.push_back(static_cast<uint8_t>((t & 0x7f) + 0x20));
+        }
+    return gc_send_packet(handle, PLI_BOARDMODIFY, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_fire_spy(GCHandle handle, int x, int y) {
+    uint8_t byte = static_cast<uint8_t>(0x20 + (y & 7) + (x & 7) * 8);
+    return gc_send_packet(handle, PLI_FIRESPY, &byte, 1);
+}
+
+GCLIB_API int gc_send_carry_throw(GCHandle handle) {
+    return gc_send_packet(handle, PLI_THROWCARRIED, nullptr, 0);
+}
+
+GCLIB_API int gc_send_enter_level(GCHandle handle) {
+    uint8_t bang = '!';
+    return gc_send_packet(handle, PLI_UPDATEFILE, &bang, 1);
+}
+
+GCLIB_API int gc_send_delete_weapon(GCHandle handle, const char* name) {
+    std::string s = name ? name : "";
+    return gc_send_packet(handle, PLI_NPCWEAPONDEL, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_explosion(GCHandle handle, float x, float y, int power, int bomb_index) {
+    // 4 bytes: x*2+0x20, y*2+0x20, bomb_index+0x20, power+0x20
+    std::vector<uint8_t> data;
+    int enc_x = std::max(0, std::min(127, static_cast<int>(std::floor(x * 2.0f + 0.5f))));
+    int enc_y = std::max(0, std::min(127, static_cast<int>(std::floor(y * 2.0f + 0.5f))));
+    data.push_back(static_cast<uint8_t>(enc_x + 0x20));
+    data.push_back(static_cast<uint8_t>(enc_y + 0x20));
+    data.push_back(static_cast<uint8_t>((bomb_index & 0x7f) + 0x20));
+    data.push_back(static_cast<uint8_t>((power & 0x7f) + 0x20));
+    return gc_send_packet(handle, PLI_EXPLOSION, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_have_window(GCHandle handle, int have, const char* name) {
+    // byte: (have ? '!' : ' ') then window name
+    std::vector<uint8_t> data;
+    data.push_back(static_cast<uint8_t>(have ? '!' : ' '));
+    std::string s = name ? name : "";
+    data.insert(data.end(), s.begin(), s.end());
+    return gc_send_packet(handle, PLI_WEAPONADD, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_ping_answer(GCHandle handle, int ping_value) {
+    // '!' + 2-byte GraalInt: high=(val>>7)+0x20, low=(val&0x7f)+0x20
+    int clamped = std::max(0, std::min(0x6fff, ping_value));
+    std::vector<uint8_t> data;
+    data.push_back('!');
+    data.push_back(static_cast<uint8_t>((clamped >> 7) + 0x20));
+    data.push_back(static_cast<uint8_t>((clamped & 0x7f) + 0x20));
+    return gc_send_packet(handle, PLI_PACKETCOUNT, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_is_pker(GCHandle handle, int player_id) {
+    std::vector<uint8_t> data;
+    write_gint3(data, player_id);
+    return gc_send_packet(handle, PLI_CLAIMPKER, data.data(), static_cast<int>(data.size()));
+}
+
+// Length-prefix encode a filename: if len <= 0xdf, byte (len+0x20) + data; else 0xff + first 0xdf bytes.
+static void write_length_string(std::vector<uint8_t>& out, const std::string& s) {
+    if (s.size() <= 0xdf) {
+        out.push_back(static_cast<uint8_t>(s.size() + 0x20));
+        out.insert(out.end(), s.begin(), s.end());
+    } else {
+        out.push_back(0xff);
+        out.insert(out.end(), s.begin(), s.begin() + 0xdf);
+    }
+}
+
+GCLIB_API int gc_send_upload_start(GCHandle handle, const char* filename) {
+    std::string s = filename ? filename : "";
+    return gc_send_packet(handle, PLI_RC_LARGEFILESTART, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_save_file(GCHandle handle, const char* filename, const void* data, int length) {
+    // length-prefixed name + raw file data chunk
+    std::string name = filename ? filename : "";
+    const auto* bytes = reinterpret_cast<const uint8_t*>(data);
+    std::vector<uint8_t> buf;
+    write_length_string(buf, name);
+    if (bytes && length > 0) buf.insert(buf.end(), bytes, bytes + length);
+    return gc_send_packet(handle, PLI_RC_FILEBROWSER_UP, buf.data(), static_cast<int>(buf.size()));
+}
+
+GCLIB_API int gc_send_upload_end(GCHandle handle, const char* filename) {
+    std::string s = filename ? filename : "";
+    return gc_send_packet(handle, PLI_RC_LARGEFILEEND, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_request_file_deletion(GCHandle handle, const char* filename) {
+    // base filename only (no directory)
+    std::string s = filename ? filename : "";
+    auto pos = s.find_last_of("/\\");
+    if (pos != std::string::npos) s = s.substr(pos + 1);
+    return gc_send_packet(handle, PLI_RC_FILEBROWSER_DELETE, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_request_folder_deletion(GCHandle handle, const char* path) {
+    std::string s = path ? path : "";
+    return gc_send_packet(handle, PLI_RC_FOLDERDELETE, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_request_file_rename(GCHandle handle, const char* source, const char* destination) {
+    // length-prefixed destination + length-prefixed source (basename only for each)
+    auto basename = [](const std::string& p) -> std::string {
+        auto pos = p.find_last_of("/\\");
+        return pos != std::string::npos ? p.substr(pos + 1) : p;
+    };
+    std::string src = basename(source ? source : "");
+    std::string dst = basename(destination ? destination : "");
+    std::vector<uint8_t> buf;
+    write_length_string(buf, dst);
+    write_length_string(buf, src);
+    return gc_send_packet(handle, PLI_RC_FILEBROWSER_RENAME, buf.data(), static_cast<int>(buf.size()));
+}
+
+GCLIB_API int gc_send_request_files_move(GCHandle handle, const char* source_pattern, const char* destination_folder) {
+    // length-prefixed source_pattern + raw destination_folder
+    std::string src = source_pattern ? source_pattern : "";
+    std::string dst = destination_folder ? destination_folder : "";
+    std::vector<uint8_t> buf;
+    write_length_string(buf, src);
+    buf.insert(buf.end(), dst.begin(), dst.end());
+    return gc_send_packet(handle, PLI_RC_FILEBROWSER_MOVE, buf.data(), static_cast<int>(buf.size()));
+}
+
 GCLIB_API int gc_set_encryption_out(GCHandle handle, const char* cipher_type, const char* key, const char* iv) {
     auto* gc = as_client(handle);
     if (!gc) return 0;

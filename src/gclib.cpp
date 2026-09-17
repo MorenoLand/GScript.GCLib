@@ -58,6 +58,9 @@ static bool encode_send_packet(TClient* client, int packet_id, const uint8_t* da
     std::lock_guard<std::mutex> lock(client->send_mutex);
     std::vector<uint8_t> framed;
     if (!client->protocol->build_packet_frame(client, packet_id, data, length, framed)) return false;
+    if (client->version.generation == 6 && client->v6_outgoing_crypto_enabled) {
+        tclient_v6_encrypt_stream(client, framed.data(), framed.size());
+    }
     return send_all(client->sock, framed.data(), framed.size());
 }
 
@@ -67,6 +70,9 @@ static bool send_login_packet(TClient* client, const char* account, const char* 
     std::lock_guard<std::mutex> lock(client->send_mutex);
     std::vector<uint8_t> framed;
     if (!client->protocol->build_login_frame(client, account, password, framed)) return false;
+    if (client->version.generation == 6 && client->v6_outgoing_crypto_enabled) {
+        tclient_v6_encrypt_stream(client, framed.data(), framed.size());
+    }
     return send_all(client->sock, framed.data(), framed.size());
 }
 
@@ -186,6 +192,14 @@ static void recv_loop(TClient* gc) {
             uint8_t header[2] = {0, 0};
             if (!read_exact(gc->sock, header, 2)) break;
             int len = (static_cast<int>(header[0]) << 8) | static_cast<int>(header[1]);
+            if (len == 0xffff) {
+                uint8_t ext[4] = {0, 0, 0, 0};
+                if (!read_exact(gc->sock, ext, 4)) break;
+                len = (static_cast<int>(ext[0]) << 24) |
+                      (static_cast<int>(ext[1]) << 16) |
+                      (static_cast<int>(ext[2]) << 8) |
+                      static_cast<int>(ext[3]);
+            }
             if (len <= 0 || len > 0x1000000) break;
             frame.resize(static_cast<size_t>(len));
             if (!read_exact(gc->sock, frame.data(), frame.size())) break;

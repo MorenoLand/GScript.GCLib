@@ -12,5 +12,6 @@ bool tclient_v6_build_packet_frame(TClient* client, int packet_id, const uint8_t
 bool tclient_v6_decode_frame(TClient* client, const std::vector<uint8_t>& frame, std::vector<uint8_t>& decrypted);
 bool tclient_v6_decode_packets(TClient* client, const std::vector<uint8_t>& frame, std::vector<TClientDecodedPacket>& packets);
 void tclient_v6_decrypt_stream(TClient* client, uint8_t* data, size_t length);
+void tclient_v6_encrypt_stream(TClient* client, uint8_t* data, size_t length);
 
 #endif

@@ -295,3 +295,14 @@ void tclient_v6_decrypt_stream(TClient* client, uint8_t* data, size_t length) {
         data[n] ^= k;
     }
 }
+
+void tclient_v6_encrypt_stream(TClient* client, uint8_t* data, size_t length) {
+    if (!client || !client->v6_outgoing_crypto_enabled || !data || length == 0) return;
+    for (size_t n = 0; n < length; ++n) {
+        client->v6_rc4_out_i = static_cast<uint8_t>(client->v6_rc4_out_i + 1);
+        client->v6_rc4_out_j = static_cast<uint8_t>(client->v6_rc4_out_j + client->v6_rc4_out_s[client->v6_rc4_out_i]);
+        std::swap(client->v6_rc4_out_s[client->v6_rc4_out_i], client->v6_rc4_out_s[client->v6_rc4_out_j]);
+        uint8_t k = client->v6_rc4_out_s[static_cast<uint8_t>(client->v6_rc4_out_s[client->v6_rc4_out_i] + client->v6_rc4_out_s[client->v6_rc4_out_j])];
+        data[n] ^= k;
+    }
+}

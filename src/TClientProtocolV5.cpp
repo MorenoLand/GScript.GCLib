@@ -161,8 +161,11 @@ bool tclient_gen5_build_login_frame(TClient* client, const char* account, const 
 
 bool tclient_gen5_build_packet_frame(TClient* client, int packet_id, const uint8_t* data, int length, std::vector<uint8_t>& framed) {
     std::vector<uint8_t> raw;
-    raw.reserve(static_cast<size_t>(length) + 2);
+    raw.reserve(static_cast<size_t>(length) + 3);
     raw.push_back(static_cast<uint8_t>((packet_id + 32) & 0xff));
+    if (client->first_packet_out.exchange(false)) {
+        raw.push_back(static_cast<uint8_t>((client->enc_key + 32) & 0xff));
+    }
     if (data && length > 0) raw.insert(raw.end(), data, data + length);
     raw.push_back('\n');
 
@@ -171,10 +174,19 @@ bool tclient_gen5_build_packet_frame(TClient* client, int packet_id, const uint8
     if (!compress_payload(raw, comp_type, compressed)) return false;
 
     std::vector<uint8_t> encrypted = crypt_bytes(compressed, client->out_iter, client->enc_key, crypt_limit(comp_type));
-    uint16_t packet_len = static_cast<uint16_t>(encrypted.size() + 1);
+    uint32_t packet_len = static_cast<uint32_t>(encrypted.size() + 1);
     framed.clear();
-    framed.push_back(static_cast<uint8_t>((packet_len >> 8) & 0xff));
-    framed.push_back(static_cast<uint8_t>(packet_len & 0xff));
+    if (packet_len >= 0xffff) {
+        framed.push_back(0xff);
+        framed.push_back(0xff);
+        framed.push_back(static_cast<uint8_t>((packet_len >> 24) & 0xff));
+        framed.push_back(static_cast<uint8_t>((packet_len >> 16) & 0xff));
+        framed.push_back(static_cast<uint8_t>((packet_len >> 8) & 0xff));
+        framed.push_back(static_cast<uint8_t>(packet_len & 0xff));
+    } else {
+        framed.push_back(static_cast<uint8_t>((packet_len >> 8) & 0xff));
+        framed.push_back(static_cast<uint8_t>(packet_len & 0xff));
+    }
     framed.push_back(static_cast<uint8_t>(comp_type));
     framed.insert(framed.end(), encrypted.begin(), encrypted.end());
     return true;

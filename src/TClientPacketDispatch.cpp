@@ -643,9 +643,85 @@ static std::string parse_bomb_add_json(const std::vector<uint8_t>& payload) {
 
 static std::string parse_showimg_json(const std::vector<uint8_t>& payload) {
     std::ostringstream json;
-    json << "{\"length\":" << payload.size()
-         << ",\"text\":\"" << json_escape(to_string_lossy(payload))
-         << "\",\"raw_hex\":\"" << bytes_hex(payload.data(), payload.size()) << "\"}";
+    json << "{\"length\":" << payload.size();
+    if (payload.size() >= 3) {
+        TPacketReader r(payload);
+        int npc_id = r.gint3();
+        std::string text = to_string_lossy(r.remaining());
+        json << ",\"npc_id\":" << npc_id << ",\"text\":\"" << json_escape(text) << "\"";
+    } else {
+        json << ",\"text\":\"" << json_escape(to_string_lossy(payload)) << "\"";
+    }
+    json << ",\"raw_hex\":\"" << bytes_hex(payload.data(), payload.size()) << "\"}";
+    return json.str();
+}
+
+static std::string parse_fast_download_url_json(const std::vector<uint8_t>& payload) {
+    if (payload.size() <= 6) return json_raw_event(payload, "unknown");
+    TPacketReader r(payload);
+    int size = r.gint5();
+    if (!r.has()) return json_raw_event(payload, "unknown");
+    int name_len = r.gchar();
+    if (name_len <= 0 || !r.has(name_len)) return json_raw_event(payload, "unknown");
+    std::string filename = r.str(name_len);
+    if (!r.has()) return json_raw_event(payload, "unknown");
+    int url_len = r.gchar();
+    std::string url = r.has(url_len) ? r.str(url_len) : to_string_lossy(r.remaining());
+    std::ostringstream json;
+    json << "{\"size\":" << size
+         << ",\"filename\":\"" << json_escape(filename) << "\""
+         << ",\"url\":\"" << json_escape(url) << "\"}";
+    return json.str();
+}
+
+static std::string parse_trigger_action_json(const std::vector<uint8_t>& payload) {
+    if (payload.size() < 7) return json_raw_event(payload, "trigger-action");
+    TPacketReader r(payload);
+    int client_id = r.gshort();
+    int npc_id = r.gint3();
+    float x = static_cast<float>(r.gchar()) / 2.0f;
+    float y = static_cast<float>(r.gchar()) / 2.0f;
+    std::string rest = to_string_lossy(r.remaining());
+    std::string action = rest;
+    std::string params;
+    size_t comma = rest.find(',');
+    if (comma != std::string::npos) {
+        action = rest.substr(0, comma);
+        params = rest.substr(comma + 1);
+    }
+    std::ostringstream json;
+    json << "{\"client_id\":" << client_id
+         << ",\"npc_id\":" << npc_id
+         << ",\"x\":" << x
+         << ",\"y\":" << y
+         << ",\"action\":\"" << json_escape(action) << "\""
+         << ",\"params\":\"" << json_escape(params) << "\"}";
+    return json.str();
+}
+
+static std::string parse_npc_move_waypoints_json(const std::vector<uint8_t>& payload) {
+    if (payload.size() < 3) return json_raw_event(payload, "motion-or-action");
+    TPacketReader r(payload);
+    int npc_id = r.gint3();
+    std::ostringstream json;
+    json << "{\"npc_id\":" << npc_id << ",\"steps\":[";
+    bool first = true;
+    while (r.has(11)) {
+        if (!first) json << ",";
+        first = false;
+        double dx = decode_signed14(r) / 16.0;
+        double dy = decode_signed14(r) / 16.0;
+        double dest_x = decode_signed14(r) / 16.0;
+        double dest_y = decode_signed14(r) / 16.0;
+        int t1 = r.byte() - 0x20;
+        int t2 = r.byte() - 0x20;
+        double move_time = ((t1 * 128) + t2) / 20.0;
+        int easing = r.byte() - 0x20;
+        json << "{\"dx\":" << dx << ",\"dy\":" << dy
+             << ",\"dest_x\":" << dest_x << ",\"dest_y\":" << dest_y
+             << ",\"move_time\":" << move_time << ",\"easing\":" << easing << "}";
+    }
+    json << "]}";
     return json.str();
 }
 
@@ -1427,7 +1503,11 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
         break;
     }
     case PLO_SIGNATURE: {
+        int sig = payload.empty() ? 0 : static_cast<int>(payload[0]) - 32;
         if (!client->authenticated.exchange(true) && auth_cb.cb) auth_cb.cb(auth_cb.ud);
+        std::ostringstream json;
+        json << "{\"authenticated\":true,\"signature\":" << sig << "}";
+        emit_packet_event(packet_event_cb, packet_id, json.str());
         break;
     }
     case PLO_DISCMESSAGE: {
@@ -1807,7 +1887,6 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
     case PLO_NC_LEVELLIST:
     case PLO_UNKNOWN81:
     case PLO_UNKNOWN83:
-    case PLO_UNKNOWN109:
     case PLO_UNKNOWN111:
     case PLO_UNKNOWN124:
     case PLO_UNKNOWN132:
@@ -1823,6 +1902,10 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
     case PLO_UNKNOWN195:
     case PLO_UNKNOWN198: {
         emit_packet_event(packet_event_cb, packet_id, json_raw_event(payload, "unknown"));
+        break;
+    }
+    case PLO_UNKNOWN109: {
+        emit_packet_event(packet_event_cb, packet_id, parse_fast_download_url_json(payload));
         break;
     }
     case PLO_NPCSERVERADDR: {
@@ -1850,7 +1933,7 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
         break;
     }
     case PLO_TRIGGERACTION: {
-        emit_packet_event(packet_event_cb, packet_id, json_raw_event(payload, "trigger-action"));
+        emit_packet_event(packet_event_cb, packet_id, parse_trigger_action_json(payload));
         break;
     }
     case PLO_NPCBYTECODE: {
@@ -1939,7 +2022,10 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
         emit_packet_event(packet_event_cb, packet_id, parse_resource_summary_json(payload, "level"));
         break;
     case PLO_MOVE:
-    case PLO_MOVE2:
+    case PLO_MOVE2: {
+        emit_packet_event(packet_event_cb, packet_id, parse_npc_move_waypoints_json(payload));
+        break;
+    }
     case PLO_SHOOT:
     case PLO_SHOOT2:
     case PLO_LISTPROCESSES:

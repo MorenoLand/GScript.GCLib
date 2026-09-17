@@ -172,6 +172,22 @@ class GCLib:
         self.lib.gc_send_request_file_rename.restype = c_int
         self.lib.gc_send_request_files_move.argtypes = [c_void_p, c_char_p, c_char_p]
         self.lib.gc_send_request_files_move.restype = c_int
+        self.lib.gc_send_weapon_img.argtypes = [c_void_p, c_char_p]
+        self.lib.gc_send_weapon_img.restype = c_int
+        self.lib.gc_send_npc_props.argtypes = [c_void_p, c_char_p]
+        self.lib.gc_send_npc_props.restype = c_int
+        self.lib.gc_send_window_list.argtypes = [c_void_p, c_char_p]
+        self.lib.gc_send_window_list.restype = c_int
+        self.lib.gc_send_preload_level.argtypes = [c_void_p, c_char_p, ctypes.c_uint]
+        self.lib.gc_send_preload_level.restype = c_int
+        self.lib.gc_send_board_modify_rect.argtypes = [c_void_p, c_char_p, c_int, c_int, c_int, c_int, c_int, ctypes.POINTER(ctypes.c_ushort)]
+        self.lib.gc_send_board_modify_rect.restype = c_int
+        self.lib.gc_send_shoot_projectile.argtypes = [c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double, c_char_p, c_char_p, c_char_p]
+        self.lib.gc_send_shoot_projectile.restype = c_int
+        self.lib.gc_send_download_file.argtypes = [c_void_p, c_char_p, c_char_p, c_char_p]
+        self.lib.gc_send_download_file.restype = c_int
+        self.lib.gc_send_request_update_package.argtypes = [c_void_p, c_char_p, c_int]
+        self.lib.gc_send_request_update_package.restype = c_int
         self.lib.gc_set_encryption_out.argtypes = [c_void_p, c_char_p, c_char_p, c_char_p]
         self.lib.gc_set_encryption_out.restype = c_int
 

@@ -2084,6 +2084,19 @@ void tclient_dispatch_packet(TClient* client, int packet_id, const std::vector<u
         emit_packet_event(packet_event_cb, packet_id, parse_cache_metadata_json(payload));
         break;
     }
+    case 92: { // parseSetPing
+        if (payload.size() >= 3) {
+            int mode = static_cast<int>(payload[0]) - 0x20;
+            int ping_id = ((static_cast<int>(payload[1]) - 0x20) << 7) | (static_cast<int>(payload[2]) - 0x20);
+            if (mode == 0) {
+                gc_send_ping_answer(client, ping_id);
+            }
+            std::ostringstream json;
+            json << "{\"mode\":" << mode << ",\"ping_id\":" << ping_id << "}";
+            emit_packet_event(packet_event_cb, packet_id, json.str());
+        }
+        break;
+    }
     default:
         emit_packet_event(packet_event_cb, packet_id, json_raw_event(payload, "unhandled"));
         break;

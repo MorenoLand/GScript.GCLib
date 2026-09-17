@@ -162,6 +162,14 @@ GCLIB_API int gc_send_request_file_deletion(GCHandle handle, const char* filenam
 GCLIB_API int gc_send_request_folder_deletion(GCHandle handle, const char* path);
 GCLIB_API int gc_send_request_file_rename(GCHandle handle, const char* source, const char* destination);
 GCLIB_API int gc_send_request_files_move(GCHandle handle, const char* source_pattern, const char* destination_folder);
+GCLIB_API int gc_send_weapon_img(GCHandle handle, const char* image);
+GCLIB_API int gc_send_npc_props(GCHandle handle, const char* props);
+GCLIB_API int gc_send_window_list(GCHandle handle, const char* window_list);
+GCLIB_API int gc_send_preload_level(GCHandle handle, const char* level, unsigned int mod_time);
+GCLIB_API int gc_send_board_modify_rect(GCHandle handle, const char* level, int layer, int x, int y, int width, int height, const unsigned short* tiles);
+GCLIB_API int gc_send_shoot_projectile(GCHandle handle, double x, double y, double z, double angle, double z_angle, double power, double gravity, const char* gani, const char* gani_data, const char* options);
+GCLIB_API int gc_send_download_file(GCHandle handle, const char* url, const char* filename, const char* destination_path);
+GCLIB_API int gc_send_request_update_package(GCHandle handle, const char* package_name, int blocking);
 GCLIB_API int gc_set_encryption_out(GCHandle handle, const char* cipher_type, const char* key, const char* iv);
 
 GCLIB_API void gc_free_string(char* value);

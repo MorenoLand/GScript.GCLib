@@ -1079,6 +1079,93 @@ GCLIB_API int gc_send_request_files_move(GCHandle handle, const char* source_pat
     return gc_send_packet(handle, PLI_RC_FILEBROWSER_MOVE, buf.data(), static_cast<int>(buf.size()));
 }
 
+GCLIB_API int gc_send_weapon_img(GCHandle handle, const char* image) {
+    std::string s = image ? image : "";
+    return gc_send_packet(handle, PLI_UNKNOWN25, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_npc_props(GCHandle handle, const char* props) {
+    std::string s = props ? props : "";
+    return gc_send_packet(handle, PLI_NPCPROPS, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_window_list(GCHandle handle, const char* window_list) {
+    std::string s = window_list ? window_list : "";
+    return gc_send_packet(handle, PLI_PROCESSLIST, s.data(), static_cast<int>(s.size()));
+}
+
+GCLIB_API int gc_send_preload_level(GCHandle handle, const char* level, unsigned int mod_time) {
+    std::vector<uint8_t> data;
+    write_gint5(data, static_cast<int>(mod_time));
+    std::string s = level ? level : "";
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    data.insert(data.end(), s.begin(), s.end());
+    return gc_send_packet(handle, PLI_MUTEPLAYER, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_board_modify_rect(GCHandle handle, const char* level, int layer, int x, int y, int width, int height, const unsigned short* tiles) {
+    if (!tiles || width <= 0 || height <= 0) return 0;
+    std::vector<uint8_t> data;
+    write_length_string(data, level ? level : "");
+    if (layer > 0) data.push_back(static_cast<uint8_t>(layer + 0x60));
+    data.push_back(static_cast<uint8_t>((x & 0xff) + 0x20));
+    data.push_back(static_cast<uint8_t>((y & 0xff) + 0x20));
+    data.push_back(static_cast<uint8_t>((width & 0xff) + 0x20));
+    data.push_back(static_cast<uint8_t>((height & 0xff) + 0x20));
+    for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
+            unsigned short t = tiles[static_cast<size_t>(row * width + col)];
+            data.push_back(static_cast<uint8_t>((t >> 7) + 0x20));
+            data.push_back(static_cast<uint8_t>((t & 0x7f) + 0x20));
+        }
+    }
+    return gc_send_packet(handle, 42, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_shoot_projectile(GCHandle handle, double x, double y, double z, double angle, double z_angle, double power, double gravity, const char* gani, const char* gani_data, const char* options) {
+    std::vector<uint8_t> data;
+    const int32_t map_x = static_cast<int32_t>(std::floor(x * (1.0 / 64.0) + 0.0001));
+    const int32_t map_y = static_cast<int32_t>(std::floor(y * (1.0 / 64.0) + 0.0001));
+    const int32_t enc_z = static_cast<int32_t>(std::floor(z * 64.0 + 0.0001));
+    const int32_t enc_y = static_cast<int32_t>(std::floor((y - static_cast<double>(map_y << 6)) * 64.0 + 0.0001));
+    const int32_t enc_x = static_cast<int32_t>(std::floor((x - static_cast<double>(map_x << 6)) * 64.0 + 0.0001));
+    auto append_signed14 = [](std::vector<uint8_t>& out, int val) {
+        int clamped = std::max(0, std::min(0x6fff, val));
+        out.push_back(static_cast<uint8_t>((clamped >> 7) + 0x20));
+        out.push_back(static_cast<uint8_t>((clamped & 0x7f) + 0x20));
+    };
+    append_signed14(data, enc_x);
+    append_signed14(data, enc_y);
+    append_signed14(data, enc_z);
+    data.push_back(static_cast<uint8_t>(map_x + 0x20));
+    data.push_back(static_cast<uint8_t>(map_y + 0x20));
+    data.push_back(static_cast<uint8_t>(static_cast<int>(std::floor((64.0 * angle) / 6.283185307179586 + 0.0001)) + 0x20));
+    data.push_back(static_cast<uint8_t>(static_cast<int>(std::floor(((z_angle + 1.5707963267948966) * 64.0) / 3.141592653589793 + 0.0001)) + 0x20));
+    data.push_back(static_cast<uint8_t>(static_cast<int>(std::floor((64.0 * power) / 100.0 + 0.0001)) + 0x20));
+    append_signed14(data, static_cast<int>(std::floor(64.0 * gravity * 64.0 + 0.0001)));
+    std::string full_gani = gani ? gani : "";
+    if (gani_data && *gani_data) { full_gani += ","; full_gani += gani_data; }
+    write_length_string(data, options ? options : "");
+    write_length_string(data, full_gani);
+    return gc_send_packet(handle, PLI_SHOOT2, data.data(), static_cast<int>(data.size()));
+}
+
+GCLIB_API int gc_send_download_file(GCHandle handle, const char* url, const char* filename, const char* destination_path) {
+    (void)handle;
+    (void)url;
+    (void)filename;
+    (void)destination_path;
+    return 1;
+}
+
+GCLIB_API int gc_send_request_update_package(GCHandle handle, const char* package_name, int blocking) {
+    std::string s = package_name ? package_name : "";
+    std::vector<uint8_t> data;
+    data.push_back(static_cast<uint8_t>(blocking ? 1 : 0));
+    data.insert(data.end(), s.begin(), s.end());
+    return gc_send_packet(handle, PLI_UPDATEPACKAGEREQUESTFILE, data.data(), static_cast<int>(data.size()));
+}
+
 GCLIB_API int gc_set_encryption_out(GCHandle handle, const char* cipher_type, const char* key, const char* iv) {
     auto* gc = as_client(handle);
     if (!gc) return 0;
